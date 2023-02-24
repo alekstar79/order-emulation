@@ -113,7 +113,7 @@ export default {
   },
   data: () => ({
     archiver: Archiver.init(),
-    label: 'По первому полю',
+    label: 'Первое измененное',
 
     correction: false,
     byFirst: true,
@@ -144,26 +144,41 @@ export default {
     {
       return `<pre>${stringify(this.storage)}</pre>`
     },
-    amount() {
-      const amount = Number(this.order.amount)
+    amount: {
+      get() {
+        const amount = Number(this.order.amount)
 
-      return amount > 0 ? amount : null
+        return amount > 0 ? amount : null
+      },
+      set(amount) {
+        this.order.amount = Number(amount)
+      }
     },
-    price() {
-      const price = Number(this.order.price)
+    price: {
+      get() {
+        const price = Number(this.order.price)
 
-      return price > 0 ? price : null
+        return price > 0 ? price : null
+      },
+      set(price) {
+        this.order.price = Number(price)
+      }
     },
-    qty() {
-      const qty = Number(this.order.qty)
+    qty: {
+      get() {
+        const qty = Number(this.order.qty)
 
-      return qty > 0 ? qty : null
+        return qty > 0 ? qty : null
+      },
+      set(qty) {
+        this.order.qty = Number(qty)
+      }
     }
   },
   watch: {
     order: {
       deep: true,
-      handler()
+      handler(/* { price, qty, amount } */)
       {
         if (this.correction || !this.archiver.lastChanged) return
 
@@ -174,6 +189,10 @@ export default {
         const now = this.archiver.nowChange
 
         const field = this.byFirst ? first : last
+
+        // console.log(`first: ${first}`)
+        // console.log(`last: ${last}`)
+        // console.log(`now: ${now}`)
 
         Object.assign(this.order, {
           [field]: (value => {
@@ -191,9 +210,10 @@ export default {
                 }
                 break
               case 'price':
-                if (!this.order.amount) {
-                  this.order.amount = amount
-                }
+                // if (!this.order.amount) {
+                // console.log(JSON.stringify({ price: this.price, qty: this.qty, amount: this.amount }))
+                  this.amount = amount
+                // }
 
                 switch (field) {
                   case 'qty':
@@ -205,9 +225,10 @@ export default {
                 }
                 break
               case 'qty':
-                if (!this.order.amount) {
-                  this.order.amount = amount
-                }
+                // if (!this.order.amount) {
+                // console.log(JSON.stringify({ price: this.price, qty: this.qty, amount: this.amount }))
+                  this.amount = amount
+                // }
 
                 switch (field) {
                   case 'price':
@@ -228,7 +249,9 @@ export default {
           })(this[field])
         })
 
-        this.correction = false
+        setTimeout(() => {
+          this.correction = false
+        })
       }
     }
   },
@@ -269,9 +292,9 @@ export default {
       this.afterSend(success)
     },
     onChange: debounce(function({ target, extend }, key, action = 'было изменено') {
-      this.order.nonce += 1
+      this.order.nonce = this.order.nonce + 1
 
-      this.events.unshift({
+      extend && this.events.unshift({
         key, desc: `${this.order.nonce} ${key} ${action} ${target?.value || ''}`, extend
       })
     }),
