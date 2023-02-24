@@ -4,7 +4,7 @@ export function sendRequest(request)
 {
   return new Promise(resolve => {
     setTimeout(() => {
-      resolve({ success: !!even(JSON.parse(request).qty) })
+      resolve({ success: !!even(JSON.parse(request).amount) })
 
     },1e3)
   })

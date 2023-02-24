@@ -3,7 +3,7 @@
 import { Emitter } from './emitter.js'
 
 /**
-* @class RuntimeValidator Form validator
+* @class RuntimeValidator
 * @constructor
 *
 * @property {HTMLInputElement} input

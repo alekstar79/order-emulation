@@ -5,6 +5,7 @@
         <nav class="navbar navbar-light bg-light">
           <div class="container-fluid">
             <span class="navbar-brand">Эмулятор заказа</span>
+            <Switches v-model="enabled" :label="label" />
           </div>
         </nav>
       </div>
@@ -100,11 +101,23 @@
 <script>
 import { sendRequest, stringify, debounce } from '@/utils/common'
 import { RuntimeValidator } from '@/utils/validator'
+import { Archiver } from '@/utils/archiver'
+
+import Switches from 'vue-switches'
 
 export default {
   name: 'OrderRegistrationComponent',
 
+  components: {
+    Switches
+  },
   data: () => ({
+    archiver: Archiver.init(),
+    label: 'По первому полю',
+
+    correction: false,
+    byFirst: true,
+
     validators: [],
     events: [],
 
@@ -118,40 +131,104 @@ export default {
     }
   }),
   computed: {
+    enabled: {
+      set(v) {
+        this.label = v ? 'По первому полю' : 'По последнему полю'
+        this.byFirst = v
+      },
+      get() {
+        return this.byFirst
+      }
+    },
     representation()
     {
       return `<pre>${stringify(this.storage)}</pre>`
     },
-    amount: {
-      get() {
-        Object.assign(this.order, { amount: this.order.price * this.order.qty })
+    amount() {
+      const amount = Number(this.order.amount)
 
-        const { amount } = this.order
-
-        return Number(amount) > 0 ? amount : null
-      },
-      set(amount) {
-        this.order.amount = amount
-      }
+      return amount > 0 ? amount : null
     },
-    price: {
-      get() {
-        const { price } = this.order
+    price() {
+      const price = Number(this.order.price)
 
-        return Number(price) > 0 ? price : null
-      },
-      set(price) {
-        this.order.price = price
-      }
+      return price > 0 ? price : null
     },
-    qty: {
-      get() {
-        const { qty } = this.order
+    qty() {
+      const qty = Number(this.order.qty)
 
-        return Number(qty) > 0 ? qty : null
-      },
-      set(qty) {
-        this.order.qty = qty
+      return qty > 0 ? qty : null
+    }
+  },
+  watch: {
+    order: {
+      deep: true,
+      handler()
+      {
+        if (this.correction || !this.archiver.lastChanged) return
+
+        this.correction = true
+
+        const first = this.archiver.firstChanged
+        const last = this.archiver.lastChanged
+        const now = this.archiver.nowChange
+
+        const field = this.byFirst ? first : last
+
+        Object.assign(this.order, {
+          [field]: (value => {
+            const amount = this.price * this.qty
+
+            switch (now) {
+              case 'amount':
+                switch (field) {
+                  case 'qty':
+                    this.price && (value = this.amount / this.price)
+                    break
+                  case 'price':
+                    this.qty && (value = this.amount / this.qty)
+                    break
+                }
+                break
+              case 'price':
+                if (!this.order.amount) {
+                  this.order.amount = amount
+                }
+
+                switch (field) {
+                  case 'qty':
+                    this.amount && (value = this.amount / this.price)
+                    break
+                  case 'amount':
+                    this.qty && (value = this.price * this.qty)
+                    break
+                }
+                break
+              case 'qty':
+                if (!this.order.amount) {
+                  this.order.amount = amount
+                }
+
+                switch (field) {
+                  case 'price':
+                    this.amount && (value = this.amount / this.qty)
+                    break
+                  case 'amount':
+                    this.price && (value = this.qty * this.price)
+                    break
+                }
+            }
+
+            if (value >= Infinity) {
+              value = 0
+            }
+
+            return value
+
+          })(this[field])
+        })
+
+        this.correction = false
       }
     }
   },
@@ -199,7 +276,8 @@ export default {
       })
     }),
     onInput: debounce(function({ target }, key) {
-      this[key] = target.value
+      this.order[key] = +target.value
+      this.archiver.nowChange = key
     })
   },
   beforeMount()
@@ -221,10 +299,9 @@ export default {
           [{
             id: ref,
             message: 'Not a Number',
-            validator: (target, key) => {
+            validator: target => {
               if (Number.isNaN(Number(target.value))) {
                 target.value = target.value.toString().slice(0, target.value.length - 1)
-                this.onInput({ target }, key)
                 return false
               }
 
@@ -250,7 +327,6 @@ export default {
   label {
     display: block;
   }
-
   sub {
     display: block;
     margin-left: 10px;
@@ -262,6 +338,19 @@ export default {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  ::v-deep(.vue-switcher) {
+    display: flex;
+    width: 220px;
+    justify-content: flex-end;
+    align-items: center;
+
+    .vue-switcher__label {
+      margin: 0 10px 2px 0;
+      font-size: 1em;
+      display: block;
+    }
   }
 
   .bi-caret-down-fill {
