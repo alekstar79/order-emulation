@@ -15,7 +15,7 @@
       <div class="col-3">
         <input
           :value="price"
-          @change="onChange($event, 'price')"
+          @change="onChange({ key: 'price' })"
           @input="onInput($event, 'price')"
           type="text"
           id="price"
@@ -28,7 +28,7 @@
       <div class="col-3">
         <input
           :value="qty"
-          @change="onChange($event, 'qty')"
+          @change="onChange({ key: 'qty' })"
           @input="onInput($event, 'qty')"
           type="text"
           id="qty"
@@ -41,7 +41,7 @@
       <div class="col-3">
         <input
           :value="amount"
-          @change="onChange($event, 'amount')"
+          @change="onChange({ key: 'amount' })"
           @input="onInput($event, 'amount')"
           type="text"
           id="amount"
@@ -52,7 +52,11 @@
         <label for="amount"><sub>Общая стоимость</sub></label>
       </div>
       <div class="col-3">
-        <button @click="send" class="btn btn-outline-secondary">
+        <button
+          class="btn btn-outline-secondary"
+          :disabled="forbidden"
+          @click="send"
+        >
           Добавить
         </button>
       </div>
@@ -121,16 +125,28 @@ export default {
     validators: [],
     events: [],
 
-    storage: {},
+    storage: '',
 
     order: {
+      amount: null,
+      nonce: null,
+      price: null,
+      qty: null
+    },
+    buffer: {
+      amount: 0,
       nonce: 0,
       price: 0,
-      qty: 0,
-      amount: 0
+      qty: 0
     }
   }),
   computed: {
+    forbidden() {
+      return Object.keys(this.order).filter(k => k !== 'nonce').some(k => this.order[k] === null)
+    },
+    representation() {
+      return `<pre>${this.storage}</pre>`
+    },
     enabled: {
       set(v) {
         this.label = v ? 'Первое измененное' : 'Последнее измененное'
@@ -139,10 +155,6 @@ export default {
       get() {
         return this.byFirst
       }
-    },
-    representation()
-    {
-      return `<pre>${stringify(this.storage)}</pre>`
     },
     amount: {
       get() {
@@ -175,141 +187,137 @@ export default {
       }
     }
   },
-  watch: {
-    order: {
-      deep: true,
-      handler(/* { price, qty, amount } */)
-      {
-        if (this.correction || !this.archiver.lastChanged) return
-
-        this.correction = true
-
-        const first = this.archiver.firstChanged
-        const last = this.archiver.lastChanged
-        const now = this.archiver.nowChange
-
-        const field = this.byFirst ? first : last
-
-        // console.log(`first: ${first}`)
-        // console.log(`last: ${last}`)
-        // console.log(`now: ${now}`)
-
-        Object.assign(this.order, {
-          [field]: (value => {
-            const amount = this.price * this.qty
-
-            switch (now) {
-              case 'amount':
-                switch (field) {
-                  case 'qty':
-                    this.price && (value = this.amount / this.price)
-                    break
-                  case 'price':
-                    this.qty && (value = this.amount / this.qty)
-                    break
-                }
-                break
-              case 'price':
-                // if (!this.order.amount) {
-                // console.log(JSON.stringify({ price: this.price, qty: this.qty, amount: this.amount }))
-                  this.amount = amount
-                // }
-
-                switch (field) {
-                  case 'qty':
-                    this.amount && (value = this.amount / this.price)
-                    break
-                  case 'amount':
-                    this.qty && (value = this.price * this.qty)
-                    break
-                }
-                break
-              case 'qty':
-                // if (!this.order.amount) {
-                // console.log(JSON.stringify({ price: this.price, qty: this.qty, amount: this.amount }))
-                  this.amount = amount
-                // }
-
-                switch (field) {
-                  case 'price':
-                    this.amount && (value = this.amount / this.qty)
-                    break
-                  case 'amount':
-                    this.price && (value = this.qty * this.price)
-                    break
-                }
-            }
-
-            if (value >= Infinity) {
-              value = 0
-            }
-
-            return value
-
-          })(this[field])
-        })
-
-        setTimeout(() => {
-          this.correction = false
-        })
-      }
-    }
-  },
   methods: {
     expand({ target })
     {
       target.closest('.dropdown').lastElementChild?.classList.toggle('dropdown-menu--expanded')
     },
-    beforeSend()
+    beforeSend(key = 'submit')
     {
       this.onChange({
+        action: '(отправка на сервер)',
         extend: `
           <pre>send: ${stringify(this.order)}</pre><br>
-          <pre>local: ${stringify(this.storage)}</pre>
-        `
-      }, 'submit', 'отправка на сервер')
+          <pre>local: ${this.storage}</pre>
+        `,
+        key
+      })
     },
-    afterSend(success)
+    afterSend(success, key = 'response')
     {
       this.onChange({
+        action: '(ответ сервера)',
         extend: `
           <pre>response: ${JSON.stringify({ success }, null, 2)}</pre><br>
-          <pre>local: ${stringify(this.storage)}</pre>
-        `
-      }, 'response', 'ответ сервера')
+          <pre>local: ${this.storage}</pre>
+        `,
+        key
+      })
     },
     async send()
     {
       this.beforeSend()
 
-      const { success } = await sendRequest(stringify(this.order))
+      const { success } = await sendRequest(this.order)
 
       if (success) {
-        window.localStorage.setItem('order', stringify(this.order))
-        this.storage = Object.assign({}, this.order)
+        this.storage = stringify(this.order)
+        localStorage.setItem('order', this.storage)
       }
 
       this.afterSend(success)
     },
-    onChange: debounce(function({ target, extend }, key, action = 'было изменено') {
-      this.order.nonce = this.order.nonce + 1
+    onChange: debounce(function({ extend, key = '', action = '' }) {
+      const nonce = extend ? (this.order.nonce += 1) : +this.order.nonce
 
-      extend && this.events.unshift({
-        key, desc: `${this.order.nonce} ${key} ${action} ${target?.value || ''}`, extend
+      if (!['submit','response'].includes(key)) {
+        return this.flush(this.buffer[key])
+      }
+
+      this.events.unshift({
+        desc: `${nonce} ${key} ${action}`,
+        extend,
+        key
       })
     }),
     onInput: debounce(function({ target }, key) {
-      this.order[key] = +target.value
       this.archiver.nowChange = key
-    })
+      this.buffer[key] = +target.value
+    }),
+    flush(changed)
+    {
+      let first, last, now, field, amount, price, qty, value
+
+      first = this.archiver.firstChanged
+      last = this.archiver.lastChanged
+      now = this.archiver.nowChange
+
+      field = this.byFirst ? first : last
+
+      value = this[field]
+      amount = this.amount
+      price = this.price
+      qty = this.qty
+
+      switch (now) {
+        case 'amount':
+          switch (field) {
+            case 'qty':
+              price ??= changed / qty
+              price && (value = changed / price)
+              break
+            case 'price':
+              qty ??= changed / price
+              qty && (value = changed / qty)
+              break
+          }
+          break
+        case 'price':
+          switch (field) {
+            case 'qty':
+              amount ??= changed * qty
+              amount && (value = amount / changed)
+              break
+            case 'amount':
+              qty ??= amount / changed
+              qty && (value = qty * changed)
+              break
+          }
+          break
+        case 'qty':
+          switch (field) {
+            case 'price':
+              amount ??= price * changed
+              amount && (value = amount / changed)
+              break
+            case 'amount':
+              price ??= amount / changed
+              price && (value = price * changed)
+              break
+          }
+      }
+
+      if (value >= Infinity) {
+        value = 0
+      }
+
+      Object.assign(
+        this.order,
+        { amount, price, qty },
+        {
+          [field]: value,
+          [now]: changed
+        }
+      )
+    }
   },
   beforeMount()
   {
-    if (!window.localStorage.getItem('order')) {
-      window.localStorage.setItem('order', stringify(this.order))
+    if (!localStorage.getItem('order')) {
+      localStorage.setItem('order', stringify(this.order))
     }
 
-    this.storage = JSON.parse(window.localStorage.getItem('order'))
+    this.storage = localStorage.getItem('order')
   },
   async mounted()
   {
@@ -380,7 +388,6 @@ export default {
     font-size: 10px;
     margin: 0 10px;
   }
-
   .col-3 {
     width: 130px;
     margin: 5px auto;
@@ -395,7 +402,6 @@ export default {
       align-self: flex-start;
     }
   }
-
   .card {
     .list-group {
       max-height: 490px;
@@ -407,7 +413,6 @@ export default {
       }
     }
   }
-
   .dropdown-menu {
     position: relative;
     display: block;
