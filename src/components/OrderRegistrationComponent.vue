@@ -103,7 +103,7 @@
 </template>
 
 <script>
-import { sendRequest, stringify, debounce } from '@/utils/common'
+import { sendRequest, cutSpaces, stringify, debounce } from '@/utils/common'
 import { RuntimeValidator } from '@/utils/validator'
 import { Archiver } from '@/utils/archiver'
 
@@ -227,22 +227,27 @@ export default {
 
       this.afterSend(success)
     },
-    onChange: debounce(function({ extend, key = '', action = '' }) {
-      const nonce = extend ? (this.order.nonce += 1) : +this.order.nonce
+    onChange: debounce(function({ extend, key = '', action = 'было изменено' }) {
+      let old, now, str = '', nonce = this.order.nonce += 1
 
       if (!['submit','response'].includes(key)) {
-        return this.flush(this.buffer[key])
+        old = this[key]
+        this.flush(this.buffer[key])
+        now = this[key]
       }
 
+      str += old ? `${old} >>> ` : ''
+      str += now ? `${now}` : ''
+
       this.events.unshift({
-        desc: `${nonce} ${key} ${action}`,
+        desc: cutSpaces(`${nonce} ${key} ${action} ${str}`),
         extend,
         key
       })
     }),
     onInput: debounce(function({ target }, key) {
-      this.archiver.nowChange = key
       this.buffer[key] = +target.value
+      this.archiver.nowChange = key
     }),
     flush(changed)
     {

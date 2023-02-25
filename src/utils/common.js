@@ -1,4 +1,10 @@
 /**
+* @param {String} str
+* @returns {String}
+*/
+export const cutSpaces = str => str.replaceAll(/\s{2}/g, ' ')
+
+/**
 * @param {Number} n
 * @returns {Boolean}
 */
